@@ -1,31 +1,29 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"math/rand"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/meterio/meter-pov/genesis"
+
+	// "github.com/meterio/meter-pov/genesis"
+
 	"github.com/meterio/meter-pov/meter"
 	"github.com/meterio/meter-pov/script"
 	"github.com/meterio/meter-pov/script/auction"
-	"github.com/meterio/meter-pov/tx"
 )
 
-func buildAuctionBuildTx() (*tx.Transaction, error) {
-	chainTag := byte(82)
-	bestNum := uint32(26360919) // TODO: use latest block number
-	builder := new(tx.Builder)
-	builder.ChainTag(chainTag).
-		BlockRef(tx.NewBlockRef(bestNum)).
-		Expiration(32).
-		GasPriceCoef(0).
-		Gas(meter.BaseTxGas * 2). // buffer for builder.Build().IntrinsicGas()
-		DependsOn(nil).
-		Nonce(5) // TODO: please use random int
+func buildAuctionBidTx(privKeyHex string, amount *big.Int, nonce uint64) (*types.Transaction, error) {
+	privKey, _ := crypto.HexToECDSA(privKeyHex)
+	owner := crypto.PubkeyToAddress(privKey.PublicKey)
+
+	chainID := big.NewInt(82)
 
 	// prepare auction bid data
 	body := &auction.AuctionBody{
@@ -37,7 +35,9 @@ func buildAuctionBuildTx() (*tx.Transaction, error) {
 		EndEpoch:    0,
 		Sequence:    0,
 		AuctionID:   meter.Bytes32{},
+		Bidder:      meter.MustParseAddress(owner.String()),
 		Timestamp:   uint64(time.Now().Unix()),
+		Amount:      amount,
 		Nonce:       rand.Uint64(),
 	}
 	payload, err := rlp.EncodeToBytes(body)
@@ -47,10 +47,7 @@ func buildAuctionBuildTx() (*tx.Transaction, error) {
 	}
 
 	s := &script.Script{
-		Header: script.ScriptHeader{
-			Version: uint32(0),
-			ModID:   script.AUCTION_MODULE_ID,
-		},
+		Header:  script.ScriptHeader{Version: uint32(0), ModID: script.AUCTION_MODULE_ID},
 		Payload: payload,
 	}
 	data, err := rlp.EncodeToBytes(s)
@@ -62,30 +59,38 @@ func buildAuctionBuildTx() (*tx.Transaction, error) {
 	prefix := []byte{0xff, 0xff, 0xff, 0xff}
 	data = append(prefix, data...)
 
-	// build tx
-	builder.Clause(
-		tx.NewClause(&auction.AuctionAccountAddr).
-			WithValue(big.NewInt(0)).
-			WithToken(meter.MTRG).
-			WithData(data))
-	tx := builder.Build()
+	gasLimit := uint64(250000)
+	gasPrice := big.NewInt(50000000000)
+	tx := types.NewTransaction(nonce, owner, amount, gasLimit, gasPrice, data)
 
 	// sign the tx
-	sig, err := crypto.Sign(tx.SigningHash().Bytes(), genesis.DevAccounts()[0].PrivateKey)
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privKey)
 	if err != nil {
-		fmt.Println("sign error: ", err)
-		return nil, err
+		fmt.Println(err)
 	}
-	tx = tx.WithSignature(sig)
-	return tx, nil
+
+	return signedTx, nil
 }
 
 func main() {
 	fmt.Println(auction.AuctionAccountAddr)
-	tx, err := buildAuctionBuildTx()
+	privKeyHex := "eac5...9a2f"                                   // TODO: replace with actual private key
+	amount := big.NewInt(0).Mul(big.NewInt(13), big.NewInt(1e18)) // TODO: replace with actual amount
+	nonce := uint64(3)                                            // TODO: use random number
+	tx, err := buildAuctionBidTx(privKeyHex, amount, nonce)
 	if err != nil {
 		fmt.Println("Error:", err)
-	} else {
-		fmt.Println("Build Tx: ", tx)
+		return
 	}
+	client, err := ethclient.Dial("http://rpc.meter.io:8545")
+	if err != nil {
+		fmt.Println("Could not connect to rpc endpoint:", err)
+		return
+	}
+	err = client.SendTransaction(context.Background(), tx)
+	if err != nil {
+		fmt.Println("Could not send transaction: ", err)
+		return
+	}
+	fmt.Println("Sent tx: ", tx.Hash())
 }
