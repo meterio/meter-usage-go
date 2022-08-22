@@ -11,9 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rlp"
-
-	// "github.com/meterio/meter-pov/genesis"
-
 	"github.com/meterio/meter-pov/meter"
 	"github.com/meterio/meter-pov/script"
 	"github.com/meterio/meter-pov/script/auction"
