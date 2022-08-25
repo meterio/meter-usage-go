@@ -58,7 +58,7 @@ func buildAuctionBidTx(privKeyHex string, amount *big.Int, nonce uint64) (*types
 
 	gasLimit := uint64(250000)
 	gasPrice := big.NewInt(50000000000)
-	tx := types.NewTransaction(nonce, owner, amount, gasLimit, gasPrice, data)
+	tx := types.NewTransaction(nonce, owner, big.NewInt(0), gasLimit, gasPrice, data)
 
 	// sign the tx
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privKey)
@@ -71,7 +71,7 @@ func buildAuctionBidTx(privKeyHex string, amount *big.Int, nonce uint64) (*types
 
 func main() {
 	fmt.Println(auction.AuctionAccountAddr)
-	privKeyHex := "eac5...9a2f"                                   // TODO: replace with actual private key
+	privKeyHex := "eac5....9a2f"                                  // TODO: replace with actual private key
 	amount := big.NewInt(0).Mul(big.NewInt(13), big.NewInt(1e18)) // TODO: replace with actual amount
 	nonce := uint64(3)                                            // TODO: use random number
 	tx, err := buildAuctionBidTx(privKeyHex, amount, nonce)
